@@ -1,6 +1,7 @@
 let video;
 let contourPaths = [];
 let frozen = false;
+let frozenContourPoints = []; // snapshot of contour points when frozen (for static branches)
 let svgBtn;
 let panelDiv;
 
@@ -207,7 +208,10 @@ function windowResized() {
 }
 
 function draw() {
-  if (frozen) return;
+  if (frozen) {
+    renderFrozenScene();
+    return;
+  }
   frameCounter++;
 
   if (!videoReady) {
@@ -237,15 +241,44 @@ function mousePressed() {
     frozen = false;
     svgBtn.hide();
     panelDiv.show();
-    loop();
   } else {
     frozen = true;
     svgBtn.show();
     svgBtn.position(270, 10);
-    noLoop();
-    renderContours();
+    frozenContourPoints = contourPaths.map(function(flat) {
+      return getContourPoints(flat);
+    });
   }
   return false;
+}
+
+// ─── Frozen scene ───────────────────────────────────────────────
+
+function renderFrozenScene() {
+  background(params.bgR, params.bgG, params.bgB, 255);
+  stroke(params.strokeR, params.strokeG, params.strokeB);
+  strokeWeight(params.strokeW);
+  noFill();
+  for (var ci = 0; ci < frozenContourPoints.length; ci++) {
+    var pts = frozenContourPoints[ci];
+    if (!pts || pts.length < 4) continue;
+    if (params.smooth && pts.length >= 8) {
+      beginShape();
+      curveVertex(pts[0], pts[1]);
+      for (var p = 0; p < pts.length; p += 2) curveVertex(pts[p], pts[p + 1]);
+      curveVertex(pts[pts.length - 2], pts[pts.length - 1]);
+      endShape();
+    } else {
+      beginShape();
+      for (var p = 0; p < pts.length; p += 2) vertex(pts[p], pts[p + 1]);
+      endShape();
+    }
+  }
+  // Hint
+  fill(0, 0, 0, 120); noStroke();
+  rect(0, height - 32, width, 32);
+  fill(255); textSize(13); textAlign(CENTER, CENTER);
+  text("Click canvas to unfreeze  |  Download SVG above", width / 2, height - 16);
 }
 
 // ─── SVG Export ──────────────────────────────────────────────
@@ -456,12 +489,11 @@ function renderContours() {
 function buildSVG() {
   var pathsStr = "";
   var col = "rgb(" + params.strokeR + "," + params.strokeG + "," + params.strokeB + ")";
+  var pointsToUse = frozen && frozenContourPoints.length > 0 ? frozenContourPoints : contourPaths.map(function(flat) { return getContourPoints(flat); });
 
-  for (var ci = 0; ci < contourPaths.length; ci++) {
-    var flat = contourPaths[ci];
-    if ((flat.length >> 1) < 2) continue;
-    var pts = getContourPoints(flat);
-    if (pts.length < 4) continue;
+  for (var ci = 0; ci < pointsToUse.length; ci++) {
+    var pts = pointsToUse[ci];
+    if (!pts || pts.length < 4) continue;
 
     var d = "M " + pts[0].toFixed(1) + " " + pts[1].toFixed(1);
     for (var p = 2; p < pts.length; p += 2) {
